@@ -29,16 +29,21 @@ else:
 
     st.sidebar.image("https://v4company.com/wp-content/uploads/2021/08/logo-v4.png", width=100)
     
+# --- CONEXÃO COM SUPABASE (VERSÃO REFORÇADA) ---
 try:
-    # Força o Streamlit a reconhecer a conexão baseada nos Secrets
+    # Tentativa 1: Usando o gerenciador de conexões padrão
     conn = st.connection("supabase", type=SupabaseConnection)
-except Exception as e:
-    st.error("⚠️ Erro de Configuração detectado!")
-    st.info("As chaves foram inseridas, mas o sistema ainda não as validou.")
-    st.write("Erro técnico:", e)
-    if st.button("Tentar Reconectar Agora"):
-        st.rerun()
-    st.stop()
+except Exception:
+    try:
+        # Tentativa 2: Buscando manualmente nos segredos caso a primeira falhe
+        url = st.secrets["connections"]["supabase"]["supabase_url"]
+        key = st.secrets["connections"]["supabase"]["supabase_key"]
+        conn = st.connection("supabase", type=SupabaseConnection, url=url, key=key)
+    except Exception as e:
+        st.error("❌ Erro de Configuração Crítico")
+        st.write("O Streamlit não encontrou as chaves nos Secrets.")
+        st.info("Verifique se o texto nos Secrets começa exatamente com [connections.supabase]")
+        st.stop()
 
     st.title(f"📊 Dashboard de Performance - Unidade V4")
 
