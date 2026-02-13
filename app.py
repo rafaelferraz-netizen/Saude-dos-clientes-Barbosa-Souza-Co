@@ -18,7 +18,8 @@ authenticator = stauth.Authenticate(
     "v4_auth_cookie", "signature_key", cookie_expiry_days=30
 )
 
-name, authentication_status, username = authenticator.login("Acesso Restrito", "main")
+# Usando o parâmetro nomeado 'location' para evitar confusão da biblioteca
+authentication_status = authenticator.login(location='main')
 
 if authentication_status:
     # --- INTERFACE LOGADA ---
