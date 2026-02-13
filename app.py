@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit_authenticator as stauth
 from st_supabase_connection import SupabaseConnection
 import pandas as pd
 import plotly.graph_objects as go
@@ -7,48 +6,44 @@ import plotly.graph_objects as go
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="V4 Company - Gestão Interna", layout="wide", page_icon="🚀")
 
-# --- 1. CONFIGURAÇÃO DE CREDENCIAIS ---
-# Criando o dicionário de configuração conforme exigido pela nova versão da biblioteca
-config = {
-    "usernames": {
-        "admin": {
-            "name": "Franqueado V4",
-            "password": "$2b$12$K.lVz8f5fF5vXy7pY.GkReFp/W2yG3k6Z.S1v0VqE2mRjX/3U2C/G" # v4company123
-        }
-    }
-}
+# --- LOGIN SIMPLIFICADO (TESTE) ---
+if "logado" not in st.session_state:
+    st.session_state["logado"] = False
 
-# Inicializando o autenticador
-authenticator = stauth.Authenticate(
-    config,
-    "v4_auth_cookie", 
-    "signature_key", 
-    cookie_expiry_days=30
-)
-
-# Renderizando o formulário de login
-# Na versão nova, não atribuímos o retorno a uma variável diretamente no login()
-authenticator.login(location='main')
-
-# Verificando o status através do session_state (forma correta na v0.3+)
-if st.session_state["authentication_status"]:
+if not st.session_state["logado"]:
+    st.title("Acesso Restrito V4")
+    user = st.text_input("Usuário")
+    pw = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        # Verificação de texto simples para evitar erros de biblioteca
+        if user == "admin" and pw == "v4123":
+            st.session_state["logado"] = True
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
+else:
     # --- INTERFACE LOGADA ---
-    authenticator.logout("Sair", "sidebar")
+    if st.sidebar.button("Sair"):
+        st.session_state["logado"] = False
+        st.rerun()
+
     st.sidebar.image("https://v4company.com/wp-content/uploads/2021/08/logo-v4.png", width=100)
     
     # Conexão Supabase
-    conn = st.connection("supabase", type=SupabaseConnection)
+    try:
+        conn = st.connection("supabase", type=SupabaseConnection)
+    except Exception as e:
+        st.error("Erro na conexão com o Supabase. Verifique seus Secrets.")
+        st.stop()
 
     st.title(f"📊 Dashboard de Performance - Unidade V4")
 
-    # --- ABA 1: LANÇAMENTO ---
+    # --- ABAS ---
     tab1, tab2 = st.tabs(["📝 Lançar Dados", "📈 Dashboard"])
 
     with tab1:
-        # Buscar clientes do banco
         res_clientes = conn.table("clientes").select("id, nome_cliente").execute()
-        clientes_data = res_clientes.data if res_clientes else []
-        clientes_dict = {c['nome_cliente']: c['id'] for c in clientes_data}
+        clientes_dict = {c['nome_cliente']: c['id'] for c in res_clientes.data} if res_clientes.data else {}
 
         if not clientes_dict:
             st.warning("Nenhum cliente cadastrado no Supabase.")
@@ -62,15 +57,15 @@ if st.session_state["authentication_status"]:
 
                 st.divider()
                 f1, f2, l1, l2, l3, l4, l5 = st.columns(7)
-                inv = f1.number_input("Investimento (R$)", min_value=0.0, step=100.0)
-                fat = f2.number_input("Faturam. (R$)", min_value=0.0, step=100.0)
+                inv = f1.number_input("Investimento (R$)", min_value=0.0)
+                fat = f2.number_input("Faturam. (R$)", min_value=0.0)
                 lds = l1.number_input("Leads", min_value=0)
                 mql = l2.number_input("MQL", min_value=0)
                 sql = l3.number_input("SQL", min_value=0)
                 opt = l4.number_input("Oport.", min_value=0)
                 vds = l5.number_input("Vendas", min_value=0)
 
-                if st.form_submit_button("Salvar Métricas na Nuvem"):
+                if st.form_submit_button("Salvar Métricas"):
                     payload = {
                         "cliente_id": clientes_dict[sel_cliente],
                         "data_registro": str(sel_data),
@@ -84,14 +79,12 @@ if st.session_state["authentication_status"]:
                         "vendas": vds
                     }
                     conn.table("metricas_semanais").insert(payload).execute()
-                    st.success(f"Dados de {sel_cliente} salvos com sucesso!")
+                    st.success(f"Dados salvos!")
 
     with tab2:
-        # --- ABA 2: VISUALIZAÇÃO ---
         if clientes_dict:
-            cliente_dash = st.selectbox("Filtrar Dashboard por Cliente", options=list(clientes_dict.keys()))
+            cliente_dash = st.selectbox("Filtrar Dashboard", options=list(clientes_dict.keys()))
             id_c = clientes_dict[cliente_dash]
-            
             res_m = conn.table("metricas_semanais").select("*").eq("cliente_id", id_c).order("data_registro").execute()
             
             if res_m.data:
@@ -100,20 +93,12 @@ if st.session_state["authentication_status"]:
                 roas = ultima['faturamento_cliente'] / ultima['investimento_midia'] if ultima['investimento_midia'] > 0 else 0
                 
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Investimento (Últ.)", f"R$ {ultima['investimento_midia']:,.2f}")
-                m2.metric("Faturamento (Últ.)", f"R$ {ultima['faturamento_cliente']:,.2f}")
+                m1.metric("Investimento", f"R$ {ultima['investimento_midia']:,.2f}")
+                m2.metric("Faturamento", f"R$ {ultima['faturamento_cliente']:,.2f}")
                 m3.metric("ROAS", f"{roas:.2f}")
                 m4.metric("Leads", ultima['leads'])
 
-                st.subheader("Eficiência do Funil")
-                labels = ['Leads', 'MQL', 'SQL', 'Oport.', 'Vendas']
-                values = [ultima['leads'], ultima['mql'], ultima['sql_leads'], ultima['oportunidades'], ultima['vendas']]
-                fig = go.Figure(go.Funnel(y=labels, x=values, marker={"color": "red"}))
+                fig = go.Figure(go.Funnel(y=['Leads', 'MQL', 'SQL', 'Oport.', 'Vendas'], 
+                                          x=[ultima['leads'], ultima['mql'], ultima['sql_leads'], ultima['oportunidades'], ultima['vendas']],
+                                          marker={"color": "red"}))
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Ainda não há dados históricos para este cliente.")
-
-elif st.session_state["authentication_status"] is False:
-    st.error("Usuário/Senha incorretos.")
-elif st.session_state["authentication_status"] is None:
-    st.warning("Por favor, faça login para acessar os dados da unidade.")
