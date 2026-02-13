@@ -7,21 +7,31 @@ import plotly.graph_objects as go
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="V4 Company - Gestão Interna", layout="wide", page_icon="🚀")
 
-# --- 1. AUTENTICAÇÃO (LOGIN) ---
-# Substitua a senha abaixo pelo hash da sua senha preferida futuramente
-names = ["Franqueado V4"]
-usernames = ["admin"]
-passwords = ["$2b$12$K.lVz8f5fF5vXy7pY.GkReFp/W2yG3k6Z.S1v0VqE2mRjX/3U2C/G"] # v4company123
+# --- 1. CONFIGURAÇÃO DE CREDENCIAIS ---
+# Criando o dicionário de configuração conforme exigido pela nova versão da biblioteca
+config = {
+    "usernames": {
+        "admin": {
+            "name": "Franqueado V4",
+            "password": "$2b$12$K.lVz8f5fF5vXy7pY.GkReFp/W2yG3k6Z.S1v0VqE2mRjX/3U2C/G" # v4company123
+        }
+    }
+}
 
+# Inicializando o autenticador
 authenticator = stauth.Authenticate(
-    {"usernames": {usernames[0]: {"name": names[0], "password": passwords[0]}}},
-    "v4_auth_cookie", "signature_key", cookie_expiry_days=30
+    config,
+    "v4_auth_cookie", 
+    "signature_key", 
+    cookie_expiry_days=30
 )
 
-# Usando o parâmetro nomeado 'location' para evitar confusão da biblioteca
-authentication_status = authenticator.login(location='main')
+# Renderizando o formulário de login
+# Na versão nova, não atribuímos o retorno a uma variável diretamente no login()
+authenticator.login(location='main')
 
-if authentication_status:
+# Verificando o status através do session_state (forma correta na v0.3+)
+if st.session_state["authentication_status"]:
     # --- INTERFACE LOGADA ---
     authenticator.logout("Sair", "sidebar")
     st.sidebar.image("https://v4company.com/wp-content/uploads/2021/08/logo-v4.png", width=100)
@@ -37,10 +47,11 @@ if authentication_status:
     with tab1:
         # Buscar clientes do banco
         res_clientes = conn.table("clientes").select("id, nome_cliente").execute()
-        clientes_dict = {c['nome_cliente']: c['id'] for c in res_clientes.data} if res_clientes.data else {}
+        clientes_data = res_clientes.data if res_clientes else []
+        clientes_dict = {c['nome_cliente']: c['id'] for c in clientes_data}
 
         if not clientes_dict:
-            st.warning("Nenhum cliente cadastrado. Cadastre um cliente no painel do Supabase primeiro.")
+            st.warning("Nenhum cliente cadastrado no Supabase.")
         else:
             with st.form("form_metricas", clear_on_submit=True):
                 st.subheader("Entrada Semanal de Dados")
@@ -81,13 +92,10 @@ if authentication_status:
             cliente_dash = st.selectbox("Filtrar Dashboard por Cliente", options=list(clientes_dict.keys()))
             id_c = clientes_dict[cliente_dash]
             
-            # Buscar métricas
             res_m = conn.table("metricas_semanais").select("*").eq("cliente_id", id_c).order("data_registro").execute()
             
             if res_m.data:
                 df = pd.DataFrame(res_m.data)
-                
-                # Cálculos Rápidos
                 ultima = df.iloc[-1]
                 roas = ultima['faturamento_cliente'] / ultima['investimento_midia'] if ultima['investimento_midia'] > 0 else 0
                 
@@ -97,7 +105,6 @@ if authentication_status:
                 m3.metric("ROAS", f"{roas:.2f}")
                 m4.metric("Leads", ultima['leads'])
 
-                # Gráfico de Funil Simples
                 st.subheader("Eficiência do Funil")
                 labels = ['Leads', 'MQL', 'SQL', 'Oport.', 'Vendas']
                 values = [ultima['leads'], ultima['mql'], ultima['sql_leads'], ultima['oportunidades'], ultima['vendas']]
@@ -106,7 +113,7 @@ if authentication_status:
             else:
                 st.info("Ainda não há dados históricos para este cliente.")
 
-elif authentication_status == False:
+elif st.session_state["authentication_status"] is False:
     st.error("Usuário/Senha incorretos.")
-elif authentication_status == None:
+elif st.session_state["authentication_status"] is None:
     st.warning("Por favor, faça login para acessar os dados da unidade.")
