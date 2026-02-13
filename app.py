@@ -30,11 +30,14 @@ else:
     st.sidebar.image("https://v4company.com/wp-content/uploads/2021/08/logo-v4.png", width=100)
     
     # Conexão Supabase
-    try:
-        conn = st.connection("supabase", type=SupabaseConnection)
-    except Exception as e:
-        st.error("Erro na conexão com o Supabase. Verifique seus Secrets.")
-        st.stop()
+    # No lugar do try/except anterior, use este formato mais direto:
+try:
+    # Tenta conectar usando os segredos do Streamlit
+    conn = st.connection("supabase", type=SupabaseConnection)
+except Exception as e:
+    st.error("⚠️ Erro de Configuração detectado!")
+    st.info("Certifique-se de que as chaves no 'Secrets' estão dentro de [connections.supabase]")
+    st.stop()
 
     st.title(f"📊 Dashboard de Performance - Unidade V4")
 
